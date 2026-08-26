@@ -1,0 +1,14 @@
+{
+  "name": "chrome-edr-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:local": "wrangler d1 execute DB_CONTROL --local --file=schema/control.sql && wrangler d1 execute DB_SHARD_00 --local --file=schema/shard.sql && wrangler d1 execute DB_SHARD_01 --local --file=schema/shard.sql"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}

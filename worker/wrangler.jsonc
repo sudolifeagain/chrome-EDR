@@ -1,0 +1,30 @@
+{
+  // chrome-EDR backend (Cloudflare Workers + D1 分散シャーディング)
+  //
+  // D1は「コントロールプレーン + イベントシャード群」の構成。
+  // - DB_CONTROL: tenants / devices / シャード割当ディレクトリ（小さく保つ）
+  // - DB_SHARD_NN: イベント本体。テナントはディレクトリ方式でシャードに割当てられる
+  // MVPは静的バインディング2枚でルーティング機構を実証する。本番はテナント毎に
+  // D1をREST APIで動的作成して水平拡張する（アカウント上限 50,000 DB）。
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "chrome-edr",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-01",
+  "d1_databases": [
+    {
+      "binding": "DB_CONTROL",
+      "database_name": "chrome-edr-control",
+      "database_id": "00000000-0000-0000-0000-00000000c000"
+    },
+    {
+      "binding": "DB_SHARD_00",
+      "database_name": "chrome-edr-shard-00",
+      "database_id": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "binding": "DB_SHARD_01",
+      "database_name": "chrome-edr-shard-01",
+      "database_id": "00000000-0000-0000-0000-000000000001"
+    }
+  ]
+}
