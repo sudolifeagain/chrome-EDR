@@ -17,6 +17,15 @@ CREATE TABLE IF NOT EXISTS policies (
   updated_at INTEGER NOT NULL
 );
 
+-- 日次Cronが収集するシャード統計（直近90日のロールアップ集計）
+CREATE TABLE IF NOT EXISTS shard_stats (
+  day TEXT NOT NULL,               -- YYYY-MM-DD (UTC)
+  shard_id TEXT NOT NULL,
+  events_total INTEGER NOT NULL,   -- 直近90日のイベント数
+  tenants INTEGER NOT NULL,
+  PRIMARY KEY (day, shard_id)
+);
+
 CREATE TABLE IF NOT EXISTS devices (
   id TEXT NOT NULL,
   tenant_id TEXT NOT NULL,

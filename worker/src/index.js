@@ -3,6 +3,7 @@
 
 import { SHARD_IDS, shardBinding, assignShard } from "./shards.js";
 import { DASHBOARD_HTML } from "./dashboard.js";
+import { ADMIN_HTML } from "./admin.js";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -263,6 +264,45 @@ async function summary(env, request) {
   return json({ status, bySeverity, byType, since });
 }
 
+// --- 管理API (ADMIN_KEY必須) ---
+function isAdmin(env, request) {
+  return env.ADMIN_KEY && bearerToken(request) === env.ADMIN_KEY;
+}
+
+// GET /v1/tenants: テナント一覧（デバイス数・ポリシー有無つき）
+async function listTenants(env, request) {
+  if (!isAdmin(env, request)) return json({ error: "unauthorized" }, 401);
+  const { results } = await env.DB_CONTROL.prepare(
+    `SELECT t.id, t.name, t.shard_id, t.created_at,
+       (SELECT COUNT(*) FROM devices d WHERE d.tenant_id = t.id) AS devices,
+       EXISTS(SELECT 1 FROM policies p WHERE p.tenant_id = t.id) AS has_policy
+     FROM tenants t ORDER BY t.created_at DESC`
+  ).all();
+  return json({ tenants: results });
+}
+
+// GET /v1/tenants/:id/policy: 管理者による任意テナントのポリシー取得（編集フォームの初期値用）
+async function getPolicyAsAdmin(env, request, tenantId) {
+  if (!isAdmin(env, request)) return json({ error: "unauthorized" }, 401);
+  const row = await env.DB_CONTROL.prepare(
+    "SELECT policy, updated_at FROM policies WHERE tenant_id = ?"
+  )
+    .bind(tenantId)
+    .first();
+  if (!row) return json({ policy: null, updatedAt: null });
+  return json({ policy: JSON.parse(row.policy), updatedAt: row.updated_at });
+}
+
+// GET /v1/shard-stats: 日次Cronが収集した最新のシャード統計
+async function shardStats(env, request) {
+  if (!isAdmin(env, request)) return json({ error: "unauthorized" }, 401);
+  const { results } = await env.DB_CONTROL.prepare(
+    `SELECT day, shard_id, events_total, tenants FROM shard_stats
+     WHERE day = (SELECT MAX(day) FROM shard_stats) ORDER BY shard_id`
+  ).all();
+  return json({ stats: results });
+}
+
 // --- GET /v1/ai-usage: 生成AIの利用状況 (直近24時間、ホスト別) ---
 // 24時間窓に限定して idx_events_tenant_ts のレンジスキャンに乗せ、rows_readを抑える
 async function aiUsage(env, request) {
@@ -320,6 +360,11 @@ export default {
         headers: { "Content-Type": "text/html; charset=utf-8" },
       });
     }
+    if (pathname === "/admin") {
+      return new Response(ADMIN_HTML, {
+        headers: { "Content-Type": "text/html; charset=utf-8" },
+      });
+    }
     if (pathname === "/healthz") {
       return json({ ok: true, shards: SHARD_IDS });
     }
@@ -338,6 +383,15 @@ export default {
     const policyMatch = pathname.match(/^\/v1\/tenants\/([0-9a-f-]{36})\/policy$/);
     if (policyMatch && request.method === "PUT") {
       return putPolicy(env, request, policyMatch[1]);
+    }
+    if (policyMatch && request.method === "GET") {
+      return getPolicyAsAdmin(env, request, policyMatch[1]);
+    }
+    if (pathname === "/v1/tenants" && request.method === "GET") {
+      return listTenants(env, request);
+    }
+    if (pathname === "/v1/shard-stats" && request.method === "GET") {
+      return shardStats(env, request);
     }
     if (pathname === "/v1/tenants" && request.method === "POST") {
       return createTenant(env, request);
