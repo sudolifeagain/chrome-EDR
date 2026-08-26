@@ -1,5 +1,6 @@
 node_modules/
 dist/
+# 実IDやシークレットを含む本番用ローカルファイル
 .wrangler/
 .dev.vars
 .prod.vars

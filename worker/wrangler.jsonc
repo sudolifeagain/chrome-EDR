@@ -10,6 +10,8 @@
   "name": "chrome-edr",
   "main": "src/index.js",
   "compatibility_date": "2026-08-01",
+  // 日次Cron (03:00 JST): シャード統計収集 + 90日超ロールアップの整理
+  "triggers": { "crons": ["0 18 * * *"] },
   "d1_databases": [
     {
       "binding": "DB_CONTROL",

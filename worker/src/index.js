@@ -347,7 +347,35 @@ async function listDevices(env, request) {
   return json({ devices: results });
 }
 
+// --- 日次Cron: シャード統計の収集と古いロールアップの整理 ---
+// rollup_hourly（小さな集計表）だけを読むので、統計収集自体がrows_read課金を膨らませない
+async function collectShardStats(env) {
+  const day = new Date().toISOString().slice(0, 10);
+  const cutoff = Date.now() - 90 * 24 * 3600_000;
+  for (const shardId of SHARD_IDS) {
+    const db = shardBinding(env, shardId);
+    await db.prepare("DELETE FROM rollup_hourly WHERE hour < ?").bind(cutoff).run();
+    const row = await db
+      .prepare(
+        `SELECT COUNT(DISTINCT tenant_id) AS tenants, COALESCE(SUM(n), 0) AS events_total
+         FROM rollup_hourly`
+      )
+      .first();
+    await env.DB_CONTROL.prepare(
+      `INSERT INTO shard_stats (day, shard_id, events_total, tenants) VALUES (?, ?, ?, ?)
+       ON CONFLICT (day, shard_id) DO UPDATE SET
+         events_total = excluded.events_total, tenants = excluded.tenants`
+    )
+      .bind(day, shardId, row.events_total, row.tenants)
+      .run();
+  }
+}
+
 export default {
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(collectShardStats(env));
+  },
+
   async fetch(request, env) {
     const url = new URL(request.url);
     const { pathname } = url;
