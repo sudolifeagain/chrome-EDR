@@ -4,6 +4,8 @@
 
 > Browser-native, open-source EDR for businesses. Chrome extension agent + self-hostable Cloudflare Workers backend.
 
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/sudolifeagain/chrome-EDR)
+
 従来のEDRはOSプロセスは見えてもブラウザの中（DOM・拡張機能・SaaS操作）は見えない。SWG/プロキシはTLSの外からしか見えない。chrome-EDR は **ブラウザの内側** にエージェント（Chrome拡張）を置き、テレメトリ収集・脅威検知・対応をオープンソースかつセルフホスト可能な形で提供する。
 
 ## プロダクトの意義

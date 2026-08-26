@@ -57,6 +57,33 @@ curl -X POST https://chrome-edr.<your>.workers.dev/v1/tenants \
 2. 拡張の「オプション」でエンドポイントURLとテナントAPIキーを設定
 3. ダッシュボード（デプロイURLのトップページ）を開き、テナントAPIキーで表示
 
+## 7. ポリシー設定（任意）
+
+検知の挙動はテナント毎にサーバから配信できる。エージェントは5分間隔で取得し、未設定なら既定値で動く。
+
+```bash
+curl -X PUT https://chrome-edr.<your>.workers.dev/v1/tenants/<テナントID>/policy \
+  -H "Authorization: Bearer <ADMIN_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "notify": "warn",
+    "aiHosts": ["internal-ai.example.com"],
+    "rules": {
+      "ai-mass-paste": { "warnChars": 500, "criticalChars": 2000 },
+      "lookalike-domain": { "extraProtectedDomains": ["mycorp.co.jp"] },
+      "extension-installed": { "enabled": true }
+    }
+  }'
+```
+
+- `notify`: デスクトップ通知するレベル（`critical` / `warn` / `off`。既定は critical）
+- `aiHosts`: 生成AI訪問検知に追加するホスト。注意: 貼り付け検知の対象サイトは拡張のマニフェストで静的に決まるため、追加ホストは「訪問の可視化」にのみ効く
+- `rules.<ルールID>.enabled: false` でルール単位の無効化
+
+## Deploy to Cloudflare ボタン
+
+READMEのボタンからも自分のアカウントにデプロイできる。ウィザードでルートディレクトリに `worker` を指定すること。D1バインディングは自動プロビジョニングされるが、スキーマ適用（手順3）とADMIN_KEY設定（手順4）は手動で行う。
+
 ## 運用メモ
 
 - シャード追加: `wrangler.jsonc` に `DB_SHARD_02...` を追記し、`worker/src/shards.js` の `SHARD_IDS` に追加して再デプロイ（バインディングは1 Workerあたり約5,000まで）

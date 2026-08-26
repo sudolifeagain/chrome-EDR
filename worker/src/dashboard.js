@@ -65,6 +65,19 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
     </div>
 
     <div class="card">
+      <h2 style="font-size:17px;margin-top:0">生成AIの利用状況（24時間）</h2>
+      <p class="muted" style="font-size:13px">どのAIサービスが、どれだけ使われているか。会社が把握していない利用（シャドーAI）の発見に使います。貼り付けの本文は収集していません。</p>
+      <table><thead><tr><th>AIサービス</th><th>訪問</th><th>貼り付け</th><th>貼り付け文字数</th></tr></thead>
+      <tbody id="aiUsage"></tbody></table>
+    </div>
+
+    <div class="card">
+      <h2 style="font-size:17px;margin-top:0">端末</h2>
+      <table><thead><tr><th>端末ID</th><th>最終受信</th><th>エージェント</th></tr></thead>
+      <tbody id="devices"></tbody></table>
+    </div>
+
+    <div class="card">
       <h2 style="font-size:17px;margin-top:0">最近のイベント</h2>
       <table><thead><tr><th>時刻</th><th>種類</th><th>端末</th><th>内容</th></tr></thead>
       <tbody id="events"></tbody></table>
@@ -100,11 +113,30 @@ function describeEvent(ev) {
 }
 
 async function load(key) {
-  const [sum, alerts, events] = await Promise.all([
+  const [sum, alerts, events, ai, dev] = await Promise.all([
     api("/v1/summary", key),
     api("/v1/alerts?limit=20", key),
     api("/v1/events?limit=30", key),
+    api("/v1/ai-usage", key),
+    api("/v1/devices", key),
   ]);
+
+  const aiRows = Object.entries(ai.hosts);
+  $("aiUsage").innerHTML = aiRows.length === 0
+    ? '<tr><td colspan="4" class="detail">この24時間、生成AIサイトの利用は記録されていません。</td></tr>'
+    : aiRows
+        .sort((a, b) => (b[1].visits + b[1].pastes) - (a[1].visits + a[1].pastes))
+        .map(([host, u]) =>
+          '<tr><td>' + esc(host) + '</td><td class="num">' + u.visits + '回</td>' +
+          '<td class="num">' + u.pastes + '回</td><td class="num">' + u.pastedChars.toLocaleString() + '文字</td></tr>'
+        ).join("");
+
+  $("devices").innerHTML = dev.devices.length === 0
+    ? '<tr><td colspan="3" class="detail">まだ端末からの受信がありません。</td></tr>'
+    : dev.devices.map((d) =>
+        '<tr><td>' + esc(d.id) + '</td><td>' + new Date(d.last_seen).toLocaleString() + '</td>' +
+        '<td class="num">' + esc(d.agent_version || "-") + '</td></tr>'
+      ).join("");
 
   const card = $("statusCard");
   card.className = "card status " + sum.status;

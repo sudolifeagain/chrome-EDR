@@ -263,6 +263,50 @@ async function summary(env, request) {
   return json({ status, bySeverity, byType, since });
 }
 
+// --- GET /v1/ai-usage: 生成AIの利用状況 (直近24時間、ホスト別) ---
+// 24時間窓に限定して idx_events_tenant_ts のレンジスキャンに乗せ、rows_readを抑える
+async function aiUsage(env, request) {
+  const tenant = await resolveTenant(env, request);
+  if (!tenant) return json({ error: "unauthorized" }, 401);
+
+  const since = Date.now() - 24 * 3600_000;
+  const db = shardBinding(env, tenant.shard_id);
+  const { results } = await db
+    .prepare(
+      `SELECT type, payload FROM events
+       WHERE tenant_id = ? AND ts >= ? AND type IN ('ai.visit', 'ai.paste')`
+    )
+    .bind(tenant.id, since)
+    .all();
+
+  const hosts = {};
+  for (const r of results) {
+    const p = JSON.parse(r.payload);
+    if (!p.host) continue;
+    const h = (hosts[p.host] ??= { visits: 0, pastes: 0, pastedChars: 0 });
+    if (r.type === "ai.visit") h.visits++;
+    else {
+      h.pastes++;
+      h.pastedChars += p.chars ?? 0;
+    }
+  }
+  return json({ since, hosts });
+}
+
+// --- GET /v1/devices: 端末一覧 (コントロールDB) ---
+async function listDevices(env, request) {
+  const tenant = await resolveTenant(env, request);
+  if (!tenant) return json({ error: "unauthorized" }, 401);
+
+  const { results } = await env.DB_CONTROL.prepare(
+    `SELECT id, first_seen, last_seen, agent_version FROM devices
+     WHERE tenant_id = ? ORDER BY last_seen DESC LIMIT 100`
+  )
+    .bind(tenant.id)
+    .all();
+  return json({ devices: results });
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -284,6 +328,12 @@ export default {
     }
     if (pathname === "/v1/policy" && request.method === "GET") {
       return getPolicy(env, request);
+    }
+    if (pathname === "/v1/ai-usage" && request.method === "GET") {
+      return aiUsage(env, request);
+    }
+    if (pathname === "/v1/devices" && request.method === "GET") {
+      return listDevices(env, request);
     }
     const policyMatch = pathname.match(/^\/v1\/tenants\/([0-9a-f-]{36})\/policy$/);
     if (policyMatch && request.method === "PUT") {
