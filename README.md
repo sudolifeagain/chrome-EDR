@@ -6,6 +6,12 @@
 
 従来のEDRはOSプロセスは見えてもブラウザの中（DOM・拡張機能・SaaS操作）は見えない。SWG/プロキシはTLSの外からしか見えない。chrome-EDR は **ブラウザの内側** にエージェント（Chrome拡張）を置き、テレメトリ収集・脅威検知・対応をオープンソースかつセルフホスト可能な形で提供する。
 
+## プロダクトの意義
+
+1. **セキュリティに疎い人でもわかるEDR** — アラートは専門用語を並べない。「何が起きたか」「なぜ危険か」「次に何をすべきか」を平易な日本語で提示し、専任のセキュリティ担当がいない組織でも運用できる。
+2. **いま起きている脅威への対応（シャドーAI対策など）** — 生成AIサイトの利用可視化、業務データの大量ペースト検知、危険な拡張機能のインストール検知など、従来型EDRの死角かつ直近に問題化している事象を最初のターゲットにする。
+3. **OSSでセルフホスト可能** — 既存の商用ブラウザセキュリティ製品は全てクローズドSaaS。テレメトリを自組織のCloudflareアカウントから出さずに運用できる。
+
 ## アーキテクチャ
 
 ```
@@ -39,13 +45,22 @@
 ## クイックスタート（開発）
 
 ```bash
-# 拡張機能: chrome://extensions → デベロッパーモード → 「パッケージ化されていない拡張機能を読み込む」→ agent/ を選択
-
 # バックエンド (ローカル)
 cd worker
 npm install
-npm run dev
+cp .dev.vars.example .dev.vars
+npm run db:local   # ローカルD1にスキーマ適用
+npm run dev        # http://localhost:8787 で起動（トップページがダッシュボード）
 ```
+
+拡張機能は chrome://extensions → デベロッパーモード → 「パッケージ化されていない拡張機能を読み込む」→ `agent/` を選択。テナント作成とキー設定の手順は [docs/self-host.md](docs/self-host.md) を参照。
+
+## ドキュメント
+
+- [docs/self-host.md](docs/self-host.md) — 自組織のCloudflareアカウントへのデプロイ手順
+- [docs/architecture.md](docs/architecture.md) — D1分散シャーディング設計とコスト最適化
+- [docs/market-research.md](docs/market-research.md) — 競合13製品の比較と差別化戦略
+- [docs/scrum.md](docs/scrum.md) — 開発プロセスとふりかえりログ
 
 ## ライセンス
 

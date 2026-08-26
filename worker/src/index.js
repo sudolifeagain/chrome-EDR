@@ -2,6 +2,7 @@
 // D1分散シャーディング: コントロールDB(テナント/デバイス) + イベントシャードDB群
 
 import { SHARD_IDS, shardBinding, assignShard } from "./shards.js";
+import { DASHBOARD_HTML } from "./dashboard.js";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -195,6 +196,33 @@ async function listEvents(env, request, url, { alertsOnly = false } = {}) {
   return json({ events, nextCursor });
 }
 
+// --- GET /v1/summary: 直近24時間の状況 (rollup_hourlyのみ読む = rows_read数十行) ---
+async function summary(env, request) {
+  const tenant = await resolveTenant(env, request);
+  if (!tenant) return json({ error: "unauthorized" }, 401);
+
+  const since = Date.now() - 24 * 3600_000;
+  const db = shardBinding(env, tenant.shard_id);
+  const { results } = await db
+    .prepare(
+      `SELECT severity, type, SUM(n) AS n FROM rollup_hourly
+       WHERE tenant_id = ? AND hour >= ? GROUP BY severity, type`
+    )
+    .bind(tenant.id, since)
+    .all();
+
+  const bySeverity = { info: 0, warn: 0, critical: 0 };
+  const byType = {};
+  for (const r of results) {
+    bySeverity[r.severity] = (bySeverity[r.severity] ?? 0) + r.n;
+    byType[r.type] = (byType[r.type] ?? 0) + r.n;
+  }
+  // 信号機ステータス: セキュリティ非専門者向けの3段階表示
+  const status =
+    bySeverity.critical > 0 ? "danger" : bySeverity.warn > 0 ? "caution" : "ok";
+  return json({ status, bySeverity, byType, since });
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -203,8 +231,16 @@ export default {
     if (request.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: CORS });
     }
+    if (pathname === "/" || pathname === "/dashboard") {
+      return new Response(DASHBOARD_HTML, {
+        headers: { "Content-Type": "text/html; charset=utf-8" },
+      });
+    }
     if (pathname === "/healthz") {
       return json({ ok: true, shards: SHARD_IDS });
+    }
+    if (pathname === "/v1/summary" && request.method === "GET") {
+      return summary(env, request);
     }
     if (pathname === "/v1/tenants" && request.method === "POST") {
       return createTenant(env, request);
