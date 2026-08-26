@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <style>
+    body {
+      width: 420px;
+      max-height: 560px;
+      margin: 0;
+      font: 12px/1.5 system-ui, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 12px;
+      border-bottom: 1px solid #1e293b;
+      position: sticky;
+      top: 0;
+      background: #0f172a;
+    }
+    h1 { font-size: 14px; margin: 0; }
+    #count { color: #64748b; }
+    ul { list-style: none; margin: 0; padding: 0; }
+    li { padding: 8px 12px; border-bottom: 1px solid #1e293b; }
+    .type { font-weight: 600; margin-right: 6px; }
+    .sev-warn .type { color: #facc15; }
+    .sev-critical .type { color: #f87171; }
+    .sev-info .type { color: #38bdf8; }
+    .ts { color: #64748b; float: right; }
+    .detail {
+      color: #94a3b8;
+      word-break: break-all;
+      display: block;
+      margin-top: 2px;
+    }
+    .empty { padding: 24px 12px; color: #64748b; text-align: center; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>chrome-EDR</h1>
+    <span id="count"></span>
+  </header>
+  <ul id="list"></ul>
+  <script src="popup.js"></script>
+</body>
+</html>
