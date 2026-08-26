@@ -1,6 +1,14 @@
 function describe(ev) {
   const p = ev.payload || {};
+  // アラートは平易な説明（何が起きた→次にすべきこと）を表示する
+  if (ev.type.startsWith("alert.")) {
+    return `${p.title}: ${p.whatHappened} ▶ ${p.nextAction}`;
+  }
   switch (ev.type) {
+    case "ai.visit":
+      return `生成AIサイトを利用: ${p.host}`;
+    case "ai.paste":
+      return `生成AIサイトへ貼り付け (${p.chars}文字): ${p.host}`;
     case "nav.completed":
       return p.url;
     case "download.created":

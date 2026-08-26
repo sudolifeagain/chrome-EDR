@@ -11,5 +11,27 @@
   "action": {
     "default_popup": "popup.html",
     "default_title": "chrome-EDR"
-  }
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*",
+        "https://claude.ai/*",
+        "https://gemini.google.com/*",
+        "https://copilot.microsoft.com/*",
+        "https://chat.deepseek.com/*",
+        "https://www.perplexity.ai/*",
+        "https://perplexity.ai/*",
+        "https://poe.com/*",
+        "https://notebooklm.google.com/*"
+      ],
+      "js": ["content-ai.js"],
+      "run_at": "document_idle"
+    }
+  ]
 }
