@@ -3,7 +3,11 @@
   "name": "chrome-EDR Agent",
   "version": "0.1.0",
   "description": "Browser-native OSS EDR agent (MVP) - collects browser telemetry and detects threats",
-  "permissions": ["webNavigation", "downloads", "management", "storage", "alarms"],
+  "permissions": ["webNavigation", "downloads", "management", "storage", "alarms", "notifications"],
+  "icons": {
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
   "background": {
     "service_worker": "background.js",
     "type": "module"

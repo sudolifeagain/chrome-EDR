@@ -31,6 +31,18 @@ export const AI_HOSTS = [
   "notebooklm.google.com",
 ];
 
+// 既定ポリシー。サーバ配信のポリシー(GET /v1/policy)がこれに上書きマージされる
+export const DEFAULT_POLICY = {
+  notify: "critical", // デスクトップ通知するレベル: critical | warn | off
+  aiHosts: [], // 追加の生成AIホスト（訪問可視化の対象に加算）
+  rules: {
+    "punycode-domain": { enabled: true },
+    "lookalike-domain": { enabled: true, extraProtectedDomains: [] },
+    "extension-installed": { enabled: true },
+    "ai-mass-paste": { enabled: true, warnChars: 1000, criticalChars: 5000 },
+  },
+};
+
 const DANGEROUS_PERMISSIONS = [
   "cookies",
   "webRequest",
@@ -62,8 +74,10 @@ function registrableDomain(host) {
   return parts.slice(-take).join(".");
 }
 
-export function isAiHost(host) {
-  return AI_HOSTS.some((h) => host === h || host.endsWith(`.${h}`));
+export function isAiHost(host, extraHosts = []) {
+  return [...AI_HOSTS, ...extraHosts].some(
+    (h) => host === h || host.endsWith(`.${h}`)
+  );
 }
 
 export const RULES = [
@@ -89,10 +103,14 @@ export const RULES = [
       "1文字だけ違うドメインは、ログイン情報を盗むための偽サイトの典型的な手口です。",
     nextAction:
       "アドレスバーの綴りを確認してください。ログインしてしまった場合は、本物のサイトでパスワードを変更してください。",
-    evaluate(event) {
+    evaluate(event, conf) {
       if (event.type !== "nav.completed" || !event.payload.host) return null;
       const domain = registrableDomain(event.payload.host);
-      const target = PROTECTED_DOMAINS.find((d) => editDistance1(domain, d));
+      const protectedList = [
+        ...PROTECTED_DOMAINS,
+        ...(conf?.extraProtectedDomains ?? []),
+      ];
+      const target = protectedList.find((d) => editDistance1(domain, d));
       if (!target) return null;
       return {
         severity: "critical",
@@ -136,23 +154,31 @@ export const RULES = [
       "業務資料やソースコードをそのまま貼り付けると、社外のAIサービスに機密情報が渡ってしまう恐れがあります。",
     nextAction:
       "貼り付けた内容に社外秘・個人情報が含まれていないか確認してください。含まれていた場合は管理者に相談してください。",
-    evaluate(event) {
+    evaluate(event, conf) {
       if (event.type !== "ai.paste") return null;
-      if ((event.payload.chars ?? 0) < 1000) return null;
+      const warnChars = conf?.warnChars ?? 1000;
+      const criticalChars = conf?.criticalChars ?? 5000;
+      if ((event.payload.chars ?? 0) < warnChars) return null;
       return {
-        severity: event.payload.chars >= 5000 ? "critical" : "warn",
+        severity: event.payload.chars >= criticalChars ? "critical" : "warn",
         details: { host: event.payload.host, chars: event.payload.chars },
       };
     },
   },
 ];
 
-export function evaluateRules(event) {
+export function evaluateRules(event, policy = DEFAULT_POLICY) {
   const alerts = [];
   for (const rule of RULES) {
+    // 既定 ← サーバ配信ポリシー の順でルール設定をマージ
+    const conf = {
+      ...DEFAULT_POLICY.rules[rule.id],
+      ...(policy?.rules?.[rule.id] ?? {}),
+    };
+    if (conf.enabled === false) continue;
     let match = null;
     try {
-      match = rule.evaluate(event);
+      match = rule.evaluate(event, conf);
     } catch (e) {
       console.error(`chrome-EDR: rule ${rule.id} failed`, e);
     }

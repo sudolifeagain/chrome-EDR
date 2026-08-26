@@ -10,6 +10,13 @@ CREATE TABLE IF NOT EXISTS tenants (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_tenants_key ON tenants(api_key_hash);
 
+-- テナント毎の検知ポリシー(JSON)。エージェントが定期取得してローカルルールに反映する
+CREATE TABLE IF NOT EXISTS policies (
+  tenant_id TEXT PRIMARY KEY,
+  policy TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS devices (
   id TEXT NOT NULL,
   tenant_id TEXT NOT NULL,

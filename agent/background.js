@@ -2,7 +2,7 @@
 // テレメトリ収集: ナビゲーション / ダウンロード / 拡張機能の変化 / 生成AI利用
 // 収集イベントはローカルの検知ルール(rules.js)で評価され、マッチするとアラートを生成する
 
-import { evaluateRules, isAiHost } from "./rules.js";
+import { evaluateRules, isAiHost, DEFAULT_POLICY } from "./rules.js";
 
 const MAX_EVENTS = 500;
 const MAX_OUTBOX = 2000;
@@ -18,7 +18,8 @@ function serialized(fn) {
   return writeChain;
 }
 
-function recordEvent(type, payload, severity = "info") {
+async function recordEvent(type, payload, severity = "info") {
+  const policy = await getPolicy();
   const event = {
     id: crypto.randomUUID(),
     ts: Date.now(),
@@ -29,7 +30,7 @@ function recordEvent(type, payload, severity = "info") {
   // 検知ルール評価（アラート自身は再評価しない）
   const newEvents = [event];
   if (!type.startsWith("alert.")) {
-    for (const alert of evaluateRules(event)) {
+    for (const alert of evaluateRules(event, policy)) {
       newEvents.push({
         id: crypto.randomUUID(),
         ts: Date.now(),
@@ -37,6 +38,7 @@ function recordEvent(type, payload, severity = "info") {
         severity: alert.severity,
         payload: alert,
       });
+      notifyAlert(alert, policy);
     }
   }
 
@@ -57,9 +59,12 @@ function recordEvent(type, payload, severity = "info") {
 // --- サーバへのバッチ送信 ---
 // 1分間隔でまとめて送る: リクエスト数とD1課金クエリ数を抑えるための設計
 chrome.alarms.create("edr-flush", { periodInMinutes: 1 });
+chrome.alarms.create("edr-policy", { periodInMinutes: 5 });
+fetchPolicy();
 
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === "edr-flush") flushOutbox();
+  if (alarm.name === "edr-policy") fetchPolicy();
 });
 
 async function flushOutbox() {
@@ -112,8 +117,53 @@ async function ensureDeviceId() {
 }
 ensureDeviceId();
 
+// --- サーバ配信ポリシー ---
+// 5分間隔で取得しstorageにキャッシュ。未設定・取得失敗時は既定ポリシーで動く
+let policyCache = null;
+
+async function getPolicy() {
+  if (policyCache) return policyCache;
+  const { serverPolicy } = await chrome.storage.local.get("serverPolicy");
+  policyCache = { ...DEFAULT_POLICY, ...(serverPolicy ?? {}) };
+  return policyCache;
+}
+
+async function fetchPolicy() {
+  const { config } = await chrome.storage.local.get("config");
+  if (!config?.endpoint || !config?.apiKey) return;
+  try {
+    const res = await fetch(`${config.endpoint.replace(/\/$/, "")}/v1/policy`, {
+      headers: { Authorization: `Bearer ${config.apiKey}` },
+    });
+    if (!res.ok) return;
+    const body = await res.json();
+    if (body.policy) {
+      await chrome.storage.local.set({ serverPolicy: body.policy });
+      policyCache = { ...DEFAULT_POLICY, ...body.policy };
+    }
+  } catch (e) {
+    console.warn("chrome-EDR: policy fetch failed", e);
+  }
+}
+
+// --- デスクトップ通知（わかりやすさ: 平易な説明をそのまま通知する） ---
+const SEVERITY_RANK = { info: 0, warn: 1, critical: 2 };
+
+function notifyAlert(alert, policy) {
+  const level = policy.notify ?? "critical";
+  if (level === "off") return;
+  if (SEVERITY_RANK[alert.severity] < SEVERITY_RANK[level]) return;
+  chrome.notifications.create({
+    type: "basic",
+    iconUrl: "icons/icon128.png",
+    title: `chrome-EDR: ${alert.title}`,
+    message: `${alert.whatHappened}\n次にすべきこと: ${alert.nextAction}`,
+    priority: 2,
+  });
+}
+
 // --- ナビゲーション（メインフレームの http/https のみ） ---
-chrome.webNavigation.onCompleted.addListener((details) => {
+chrome.webNavigation.onCompleted.addListener(async (details) => {
   if (details.frameId !== 0) return;
   let url;
   try {
@@ -124,7 +174,9 @@ chrome.webNavigation.onCompleted.addListener((details) => {
   if (url.protocol !== "http:" && url.protocol !== "https:") return;
   recordEvent("nav.completed", { url: details.url, host: url.hostname });
   // シャドーAI可視化: 生成AIサイトの利用を専用イベントとして記録
-  if (isAiHost(url.hostname)) {
+  // （ポリシーのaiHostsで対象を追加できる。訪問検知は全ホストを見るwebNavigationベース）
+  const policy = await getPolicy();
+  if (isAiHost(url.hostname, policy.aiHosts ?? [])) {
     recordEvent("ai.visit", { url: details.url, host: url.hostname });
   }
 });

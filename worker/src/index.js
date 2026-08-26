@@ -196,6 +196,46 @@ async function listEvents(env, request, url, { alertsOnly = false } = {}) {
   return json({ events, nextCursor });
 }
 
+// --- ポリシー配信 ---
+// GET /v1/policy (テナントキー): エージェントが定期取得
+async function getPolicy(env, request) {
+  const tenant = await resolveTenant(env, request);
+  if (!tenant) return json({ error: "unauthorized" }, 401);
+  const row = await env.DB_CONTROL.prepare(
+    "SELECT policy, updated_at FROM policies WHERE tenant_id = ?"
+  )
+    .bind(tenant.id)
+    .first();
+  if (!row) return json({ policy: null, updatedAt: null });
+  return json({ policy: JSON.parse(row.policy), updatedAt: row.updated_at });
+}
+
+// PUT /v1/tenants/:id/policy (管理者キー): ポリシー更新
+async function putPolicy(env, request, tenantId) {
+  if (bearerToken(request) !== env.ADMIN_KEY || !env.ADMIN_KEY) {
+    return json({ error: "unauthorized" }, 401);
+  }
+  const body = await request.json().catch(() => null);
+  if (!body || typeof body !== "object") {
+    return json({ error: "policy JSON body is required" }, 400);
+  }
+  const exists = await env.DB_CONTROL.prepare(
+    "SELECT id FROM tenants WHERE id = ?"
+  )
+    .bind(tenantId)
+    .first();
+  if (!exists) return json({ error: "unknown tenant" }, 404);
+
+  await env.DB_CONTROL.prepare(
+    `INSERT INTO policies (tenant_id, policy, updated_at) VALUES (?, ?, ?)
+     ON CONFLICT (tenant_id) DO UPDATE SET
+       policy = excluded.policy, updated_at = excluded.updated_at`
+  )
+    .bind(tenantId, JSON.stringify(body), Date.now())
+    .run();
+  return json({ ok: true });
+}
+
 // --- GET /v1/summary: 直近24時間の状況 (rollup_hourlyのみ読む = rows_read数十行) ---
 async function summary(env, request) {
   const tenant = await resolveTenant(env, request);
@@ -241,6 +281,13 @@ export default {
     }
     if (pathname === "/v1/summary" && request.method === "GET") {
       return summary(env, request);
+    }
+    if (pathname === "/v1/policy" && request.method === "GET") {
+      return getPolicy(env, request);
+    }
+    const policyMatch = pathname.match(/^\/v1\/tenants\/([0-9a-f-]{36})\/policy$/);
+    if (policyMatch && request.method === "PUT") {
+      return putPolicy(env, request, policyMatch[1]);
     }
     if (pathname === "/v1/tenants" && request.method === "POST") {
       return createTenant(env, request);
